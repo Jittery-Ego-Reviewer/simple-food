@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Food Generator Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #FDFD96; /* Pastel yellow */
+            touch-action: none; /* Prevents screen scrolling on mobile during drag */
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen relative font-sans text-gray-800">
+
+    <!-- Home Button -->
+    <div id="home-btn" class="absolute top-4 right-6 text-5xl cursor-pointer z-50 hover:scale-110 transition-transform">
+        🏠
+    </div>
+
+    <!-- Main Content Container -->
+    <div class="w-full h-full flex items-center justify-center relative z-0 p-4">
+        
+        <!-- Initial Tap Target (Bowl/Plate) - Increased size to 28vh -->
+        <div id="start-icon" class="text-[28vh] cursor-pointer hover:scale-110 transition-transform select-none">
+        </div>
+
+        <!-- Resulting Food Picture -->
+        <img id="result-img" class="max-w-[90vw] max-h-[90vh] w-full h-full object-contain hidden drop-shadow-2xl rounded-3xl" alt="">
+        
+        <!-- Resulting Non-food Emoji -->
+        <div id="result-emoji" class="text-[35vh] select-none hidden drop-shadow-2xl hover:scale-110 transition-transform">
+        </div>
+
+    </div>
+
+    <!-- Transparent Canvas for Drawing Circles/Strokes -->
+    <canvas id="draw-canvas" class="absolute top-0 left-0 w-full h-full z-10 hidden touch-none"></canvas>
+    
+    <!-- Drag Tool (Wand/Chef) -->
+    <div id="tool-icon" class="absolute text-[12vh] pointer-events-none z-20 hidden -translate-x-1/2 -translate-y-1/2 drop-shadow-md">
+    </div>
+
+    <script>
+        // Food Image List
+        const foods = [
+            'rice', 'cookie', 'sandwich', 'hamburger', 'zongzi', 
+            'mooncake', 'chips', 'crackers', 'broccoli', 'carrot', 
+            'siumai'
+        ];
+
+        // Non-food Emojis for the 6% chance
+        const nonFoodEmojis = ['🕶️', '🧤', '👜', '🎒', '⚽', '🧸', '💣', '📷'];
+
+        // DOM Elements
+        const startIconEl = document.getElementById('start-icon');
+        const resultImg = document.getElementById('result-img');
+        const resultEmojiEl = document.getElementById('result-emoji');
+        const canvas = document.getElementById('draw-canvas');
+        const toolIcon = document.getElementById('tool-icon');
+        const homeBtn = document.getElementById('home-btn');
+        const ctx = canvas.getContext('2d');
+
+        // State Tracking
+        let strokeCount = 0;
+        let isDrawing = false;
+        let hasMoved = false; // Ensures a tap doesn't count as a full stroke
+        let gameState = 'start'; // States: start, draw, result
+        let hue = 0; // Dynamic hue for rainbow trail
+
+        // Keep canvas perfectly sized to screen
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // 1. Setup / Home State
+        function initHome() {
+            gameState = 'start';
+            strokeCount = 0;
+            isDrawing = false;
+            hasMoved = false;
+            hue = 0;
+            
+            canvas.classList.add('hidden');
+            toolIcon.classList.add('hidden');
+            resultImg.classList.add('hidden');
+            resultEmojiEl.classList.add('hidden');
+            startIconEl.classList.remove('hidden');
+            
+            // 50/50 Chance for Bowl or Plate
+            startIconEl.textContent = Math.random() < 0.5 ? '🥣' : '🍽️';
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // 2. Start Drawing State
+        startIconEl.addEventListener('click', () => {
+            gameState = 'draw';
+            // Bowl/Plate remains visible now!
+            
+            canvas.classList.remove('hidden');
+            toolIcon.classList.remove('hidden');
+            
+            // 50/50 Chance for Magic Wand or Chef
+            toolIcon.textContent = Math.random() < 0.5 ? '🪄' : '👨'.concat('‍🍳');
+            
+            // Spawn tool near the top center for the user to grab
+            toolIcon.style.left = '50%';
+            toolIcon.style.top = '20%';
+        });
+
+        // 3. Drawing Interactions
+        function startDraw(e) {
+            if (gameState !== 'draw') return;
+            isDrawing = true;
+            hasMoved = false;
+            updateToolPos(e);
+            
+            ctx.beginPath();
+            ctx.moveTo(e.clientX, e.clientY);
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.lineWidth = 16;
+            
+            // Rainbow setup
+            hue = Math.floor(Math.random() * 360);
+            ctx.strokeStyle = `hsl(${hue}, 100%, 50%)`;
+        }
+
+        function moveDraw(e) {
+            if (!isDrawing || gameState !== 'draw') return;
+            hasMoved = true;
+            updateToolPos(e);
+            
+            ctx.lineTo(e.clientX, e.clientY);
+            
+            // Increment the hue color slowly as the user draws to create a rainbow trail
+            hue = (hue + 4) % 360;
+            ctx.strokeStyle = `hsl(${hue}, 100%, 50%)`;
+            ctx.stroke();
+            
+            // Start a new path segment to apply the updated color smoothly
+            ctx.beginPath();
+            ctx.moveTo(e.clientX, e.clientY);
+        }
+
+        // Stop drawing action
+        function stopDraw() {
+            if (isDrawing && gameState === 'draw') {
+                if (hasMoved) {
+                    strokeCount++;
+                    if (strokeCount >= 3) {
+                        // Small delay so the user can briefly see their final stroke
+                        setTimeout(triggerResult, 250);
+                    }
+                }
+            }
+            isDrawing = false;
+            hasMoved = false;
+        }
+
+        // Update tracking tool coordinates
+        function updateToolPos(e) {
+            toolIcon.style.left = e.clientX + 'px';
+            toolIcon.style.top = e.clientY + 'px';
+        }
+
+        // 4. Result State
+        function triggerResult() {
+            gameState = 'result';
+            canvas.classList.add('hidden');
+            toolIcon.classList.add('hidden');
+            startIconEl.classList.add('hidden'); // Hide the base bowl/plate now that the result is ready!
+            
+            resultEmojiEl.classList.add('hidden');
+            resultImg.classList.add('hidden');
+
+            // 6% chance a non-food emoji appears
+            if (Math.random() <= 0.06) {
+                const randomEmoji = nonFoodEmojis[Math.floor(Math.random() * nonFoodEmojis.length)];
+                resultEmojiEl.textContent = randomEmoji;
+                resultEmojiEl.classList.remove('hidden');
+            } else {
+                const randomFood = foods[Math.floor(Math.random() * foods.length)];
+                const extensions = ['.jpg', '.jfif'];
+                let extIndex = 0;
+
+                // Setup the dynamic fallback logic
+                resultImg.onerror = () => {
+                    extIndex++;
+                    if (extIndex < extensions.length) {
+                        // Try next extension (e.g., .jfif if .jpg failed)
+                        resultImg.src = `food/${randomFood}${extensions[extIndex]}`;
+                    } else {
+                        // Prevent infinite loop if all listed extensions fail
+                        resultImg.onerror = null;
+                    }
+                };
+
+                // Trigger initial load attempt with first extension (.jpg)
+                resultImg.src = `food/${randomFood}${extensions[extIndex]}`; 
+                resultImg.classList.remove('hidden');
+            }
+        }
+
+        // Event Listeners
+        homeBtn.addEventListener('click', initHome);
+
+        // Standardized pointer events natively handle Mouse, Touch, and Stylus equally well
+        canvas.addEventListener('pointerdown', startDraw);
+        canvas.addEventListener('pointermove', moveDraw);
+        window.addEventListener('pointerup', stopDraw);
+        window.addEventListener('pointercancel', stopDraw);
+        window.addEventListener('pointerout', stopDraw);
+
+        // Boot
+        initHome();
+    </script>
+</body>
+</html>
